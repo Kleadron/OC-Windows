@@ -1,17 +1,18 @@
 --CONFIG
+--backroung character, inverted
 backgroundChar = {"▒", false}
 
 --NO TOUCHY BEYOND THIS POINT
 _WINNAME = "Windows"
-_WINVER = 0.1
+_WINVER = "0.0.0.2"
 _WINFULLNAME = _WINNAME .. " " .. _WINVER
 local term = require("term")
 local os = require("os")
---local event = require("event")
+local event = require("event")
 local component = require("component")
 local keyboard = require("keyboard")
 local gpu = component.gpu
-local computer = component.computer
+local computer = require("computer")
 screenWidth, screenHeight = gpu.getResolution()
 
 local windowList = {}
@@ -19,18 +20,33 @@ local windowList = {}
 
 --sets characters for screen change
 local screenChanges = {}
+local screenBuffer = {}
 
-gpu.fill(1, 1, screenWidth, screenHeight, " ")
-gpu.set(1, 1, "Kleadron Software Windows")
+--gpu.fill(1, 1, screenWidth, screenHeight, " ")
+--gpu.set(1, 1, _WINFULLNAME)
+term.clear()
+print(_WINFULLNAME)
+print("If you have been returned to the prompt, you may not have enough memory.")
+print("Please increase your system memory or lower your screen resolution.")
 
 for x = 1, screenWidth do
 	screenChanges[x] = {}
 	for y = 1, screenHeight do
-		screenChanges[x][y] = true
+		--screenChanges[x][y] = true
+	end
+end
+
+for x = 1, screenWidth do
+	screenBuffer[x] = {}
+	for y = 1, screenHeight do
+		screenBuffer[x][y] = {}
+		screenBuffer[x][y].character = backgroundChar[1]
+		screenBuffer[x][y].inverted = backgroundChar[2]
 	end
 end
 
 local function setScreenChanges(set)
+	--not needed anymore
 	for x = 1, screenWidth do
 		for y = 1, screenHeight do
 			screenChanges[x][y] = set
@@ -38,7 +54,8 @@ local function setScreenChanges(set)
 	end
 end
 
-local function setScreenChange(x,y,layer,override)
+local function setScreenChange(x,y,layer)
+	--not needed anymore
 	if x > screenWidth or x < 1 or y > screenHeight or y < 1 then
 		return true
 	end
@@ -51,10 +68,11 @@ local function setScreenChange(x,y,layer,override)
 		screenChanges[x][y] = true
 		return true
 	end
-	if override then
-		screenChanges[x][y] = true
-		return true
-	end
+	--if we already have an override being that the layer is less than 0, what the fuck is this important for then?
+	--if override then
+	--	screenChanges[x][y] = true
+	--	return true
+	--end
 	for i = layer + 1, #windowList do
 		if x >= windowList[i].x and x <= windowList[i].x + windowList[i].w then
 			if y >= windowList[i].y and y <= windowList[i].y + windowList[i].h then
@@ -67,6 +85,7 @@ local function setScreenChange(x,y,layer,override)
 end
 
 local function getScreenChange(x,y)
+	--not needed anymore
 	if x > screenWidth or x < 1 or y > screenHeight or y < 1 then
 		return false
 	end
@@ -102,7 +121,7 @@ local function drawChar(x,y,character,inverted,layer)
 	if x > screenWidth or x < 1 or y > screenHeight or y < 1 then
 		return
 	end
-	if not screenChanges[x][y] then
+	if screenBuffer[x][y].character == character and screenBuffer[x][y].inverted == inverted then
 		if not ignoreScreenChange then
 			return
 		end
@@ -116,7 +135,8 @@ local function drawChar(x,y,character,inverted,layer)
 			gpu.setBackground(0x000000)
 		end
 		gpu.set(x, y, character)
-		screenChanges[x][y] = false
+		screenBuffer[x][y].character = character
+		screenBuffer[x][y].inverted = inverted
 	end
 end
 
@@ -128,7 +148,7 @@ local function drawString(x, y, inputString, inverted, layer)
 end
 
 
-local initialBGDraw = false
+local initialBGDraw = false --has the background been drawn yet?
 function drawBG(bgChar, inverted)
 	if not initialBGDraw then
 		if inverted then
@@ -250,20 +270,20 @@ end
 
 --Draws inverted outline (useful for determining moved window location)
 local function drawOutline(x,y,w,h)
-	ignoreScreenChange = true
+	--ignoreScreenChange = true
 	--Draw top
 	for i=0, w do
 		if x+i <= screenWidth and x+i >= 1 then
 			if y <= screenHeight and y >= 1 then
 				charAtPos, charFG, charBG = gpu.get(x+i,y)
 				doInvert = true
-				needRepaint = getScreenChange(x+i,y)
+				needRepaint = false --getScreenChange(x+i,y)
 				if charFG == 0x000000 then
 					doInvert = false
 				end
 				drawChar(x+i,y,charAtPos,doInvert,-1)
 				if needRepaint then
-					setScreenChange(x+i,y,-1,true)
+					--setScreenChange(x+i,y,-1,true)
 				end
 			end
 		end
@@ -275,13 +295,13 @@ local function drawOutline(x,y,w,h)
 			if y+i <= screenHeight and y+i >= 1 then
 				charAtPos, charFG, charBG = gpu.get(x,y+i)
 				doInvert = true
-				needRepaint = getScreenChange(x,y+i)
+				needRepaint = false --getScreenChange(x,y+i)
 				if charFG == 0x000000 then
 					doInvert = false
 				end
 				drawChar(x,y+i,charAtPos,doInvert,-1)
 				if needRepaint then
-					setScreenChange(x,y+i,-1,true)
+					--setScreenChange(x,y+i,-1,true)
 				end
 			end
 		end
@@ -289,13 +309,13 @@ local function drawOutline(x,y,w,h)
 			if y+i <= screenHeight and y+i >= 1 then
 				charAtPos, charFG, charBG = gpu.get(x+w,y+i)
 				doInvert = true
-				needRepaint = getScreenChange(x+w,y+i)
+				needRepaint = false --getScreenChange(x+w,y+i)
 				if charFG == 0x000000 then
 					doInvert = false
 				end
 				drawChar(x+w,y+i,charAtPos,doInvert,-1)
 				if needRepaint then
-					setScreenChange(x+w,y+i,-1,true)
+					--setScreenChange(x+w,y+i,-1,true)
 				end
 			end
 		end
@@ -306,25 +326,27 @@ local function drawOutline(x,y,w,h)
 			if y+h <= screenHeight and y+h >= 1 then
 				charAtPos, charFG, charBG = gpu.get(x+i,y+h)
 				doInvert = true
-				needRepaint = getScreenChange(x+i,y+h)
+				needRepaint = false --getScreenChange(x+i,y+h)
 				if charFG == 0x000000 then
 					doInvert = false
 				end
 				drawChar(x+i,y+h,charAtPos,doInvert,-1)
 				if needRepaint then
-					setScreenChange(x+i,y+h,-1,true)
+					--setScreenChange(x+i,y+h,-1,true)
 				end
 			end
 		end
 	end
-	ignoreScreenChange = false
+	--ignoreScreenChange = false
 end
 
+--utility function
 local function flashWindowOutline(layer)
 	drawOutline(windowRects[layer][1],windowRects[layer][2],windowRects[layer][3],windowRects[layer][4])
 	drawOutline(windowRects[layer][1],windowRects[layer][2],windowRects[layer][3],windowRects[layer][4])
 end
 
+--needs to be eliminated probably
 local function drawButton(x,y,text,clicked,layer)
 	if clicked then
 		drawString(x,y,text,false,layer)
@@ -333,8 +355,9 @@ local function drawButton(x,y,text,clicked,layer)
 	end
 end
 
-local function windowDialog(x,y,w,h,title,text,layer,selected)
-	local active = false
+--should probably be eliminated as well
+local function windowDialogHardStop(x,y,w,h,title,text,layer,selected)
+	local active = true
 	
 	local exclusionMap = makeExclusionMap(w, h, text)
 	drawWindow(x, y, w, h, title, layer, exclusionMap, selected)
@@ -349,6 +372,10 @@ local function windowDialog(x,y,w,h,title,text,layer,selected)
 	drawButton(x + w - 17, y + h - 1, "Cancel", false,layer)
 	drawButton(x + w - 8, y + h - 1, "  OK  ", false,layer)
 	ignoreScreenChange = false
+		
+	repaint()
+
+	local touchedID = -1
 	
 	while active do 
 		local id, _, touchX, touchY = event.pull("touch")
@@ -359,7 +386,7 @@ local function windowDialog(x,y,w,h,title,text,layer,selected)
 					computer.beep(700)
 					drawButton(x + w - 8, y + h - 1, "  OK  ", false, layer)
 					active = false
-					return 0
+					touchedID = 0
 				end
 			end
 			if touchX >= x+w-17 and touchX <= x+w-12 then 
@@ -368,12 +395,14 @@ local function windowDialog(x,y,w,h,title,text,layer,selected)
 					computer.beep(500)
 					drawButton(x + w - 17, y + h - 1, "Cancel", false, layer)
 					active = false
-					return 1
+					touchedID = 1
 				end
 			end
 		end
 		os.sleep(0.1)
 	end
+	
+	return touchedID
 end
 
 local function windowGeneric(x,y,w,h,title,text,layer,selected)
@@ -395,16 +424,16 @@ end
 
 --windowDialog(window1x,window1y,window1w, window1h,"Lol title", "Lol text")
 
+--utility function to mark an area of the screen to be repainted
 local function markRectRepaint(rect)
 	for x = windowRects[rect][1], windowRects[rect][1] + windowRects[rect][3] do
 		for y = windowRects[rect][2], windowRects[rect][2] + windowRects[rect][4] do
-			setScreenChange(x, y, rect, true)
+			--setScreenChange(x, y, rect, true)
 		end
 	end
 end
 
 --window API
-
 winAPI = {}
 
 --Returns the position of the window in the window list
@@ -432,7 +461,7 @@ function winAPI.markRepaint(name, ID)
 	if foundWindow > 0 then
 		for x = windowList[foundWindow].x, windowList[foundWindow].x + windowList[foundWindow].w do
 			for y = windowList[foundWindow].y, windowList[foundWindow].y + windowList[foundWindow].h do
-				setScreenChange(x, y, foundWindow, true)
+				--setScreenChange(x, y, foundWindow, true)
 			end
 		end
 		return true
@@ -660,8 +689,9 @@ end
 
 local function repaint()
 	--repainting from forward to backward
-	i = #windowList
-	while i > 0 do
+	for i = #windowList, 1, -1 do
+	--repainting from backward to forward
+	--for i = 1, #windowList do
 		--computer.beep(300, 0)
 		isTopMost = false
 		if i == #windowList then
@@ -673,7 +703,6 @@ local function repaint()
 		if windowList[i].windowType == "Generic" then
 			windowGeneric(windowList[i].x, windowList[i].y, windowList[i].w, windowList[i].h, windowList[i].title, windowList[i].content, i, isTopMost)
 		end
-		i = i - 1
 	end
 	drawBG(backgroundChar[1], backgroundChar[2])
 end
@@ -736,7 +765,7 @@ end
 
 --bsod
 local function errorScreen(err)
-	local crashText = "Windows has crashed :["
+	local crashText = _WINFULLNAME .. " has crashed :["
 	
 	gpu.setForeground(0xFFFFFF)
 	if gpu.getDepth() > 1 then
@@ -754,7 +783,7 @@ local function errorScreen(err)
 	print("")
 	print("Processes:")
 	for i = 1, #processes do
-		print(" N[" .. processes[i].program.details.name .. "] F[" .. processes[i].filename .. "]")
+		print(" N[" .. processes[i].program.details.name .. "]",  "F[" .. processes[i].filename .. "]")
 	end
 	--while #processes > 0 do
 	--	scheduler.removeProcess(processes[#processes].program.details.name, true)
@@ -778,7 +807,7 @@ local function errorScreen(err)
 	gpu.setForeground(0xFFFFFF)
 	gpu.setBackground(0x000000)
 	term.clear()
-	term.setCursor(1,1)
+	--term.setCursor(1,1)
 end
 
 
@@ -803,9 +832,9 @@ local demoDialog2text = {"You won't see the text under this line.", "Click OK to
 local demoDialog3text = {"This is testing bringToFront", "Click OK to do nothing.", "Cancel never worked."}
 
 function demo()
-	winAPI.addWindow(6,7,40,7,"dialog1",nil,"Dialog","Warning",demoDialog1text)
-	winAPI.addWindow(2,1,40,7,"dialog2",nil,"Dialog","Warning",demoDialog2text)
-	winAPI.addWindow(5,3,40,7,"dialog3",nil,"Dialog","Warning",demoDialog3text)
+	winAPI.addWindow(6,7,40,7,"dialog1",nil,"Generic","Warning",demoDialog1text)
+	winAPI.addWindow(2,1,40,7,"dialog2",nil,"Generic","Warning",demoDialog2text)
+	winAPI.addWindow(5,3,40,7,"dialog3",nil,"Generic","Warning",demoDialog3text)
 	repaint()
 	os.sleep(1)
 	
@@ -847,16 +876,53 @@ function demo2()
 	os.sleep(5)
 end
 
-function runOS()
+function run()
+	winAPI.addWindow(4,2,40,7,"dragtest",nil,"Generic","test",{"drag me you won't", ":)"})
+	runWinApp("test")
+	--repaint()
+	local dragWait = 0.5
+	local lastDragTime = computer.uptime()
+	local dragging = false
+	local dX, dY = 0, 0
 	while true do
-		
+		local id, _, x, y = event.pull(0)
+		if not dragging then
+			scheduler.runProcesses()
+		end
+		if id == "interrupted" then
+			print("soft interrupt, closing")
+			break
+		elseif id == "touch" or id == "drag" or id == "drop" or id == "scroll" then
+			x = math.floor(x) + 1
+			y = math.floor(y) + 1
+			if id == "drag" then
+				--winAPI.flashOutline(x, y, 40, 7)
+				dragging = true
+				dX = x
+				dY = y
+			end
+			if id == "drop" then
+				dragging = false
+				winAPI.moveWindow(x, y, "dragtest", nil, "Reposition")
+				winAPI.bringToFront("dragtest",nil)
+			end
+			--repaint()
+		end
+		if dragging then
+			if lastDragTime + dragWait < computer.uptime() then
+				lastDragTime = computer.uptime()
+				winAPI.flashOutline(dX, dY, 40, 7)
+			end
+		else 
+			repaint()
+		end
 	end
 end
 
 --Main code
 drawBG(backgroundChar[1], backgroundChar[2])
-setScreenChanges(false)
-local status, err = pcall(demo)
+--setScreenChanges(false)
+local status, err = pcall(run)
 
 if not status then
 	errorScreen(err)

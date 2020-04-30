@@ -26,6 +26,7 @@ local function run()
 	iterator = iterator + 1
 	winAPI.updateWindow("iteratorwindow2", nil, "counter " .. iterator, testContent)
 	--print("counter " .. iterator)
+	--error("Test crash :D")
 end
 
 local function stop()

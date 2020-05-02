@@ -12,21 +12,23 @@ local event = require("event")
 local component = require("component")
 local keyboard = require("keyboard")
 local gpu = component.gpu
+local screen = component.screen
 local computer = require("computer")
-screenWidth, screenHeight = gpu.getResolution()
+local screenWidth, screenHeight = gpu.getResolution()
 
 local windowList = {}
 --local windowRects = {{5, 3, 40, 7},{2, 1, 40, 7},{6, 7, 40, 7}}
 
 --sets characters for screen change
 local screenChanges = {}
+--not exactly a buffer but a change tracker stored in memory seperately from the screen because gpu calls = slow >:(
 local screenBuffer = {}
 
 --gpu.fill(1, 1, screenWidth, screenHeight, " ")
 --gpu.set(1, 1, _WINFULLNAME)
 term.clear()
 print(_WINFULLNAME)
-print("If you have been returned to the prompt, you may not have enough memory.")
+print("If you have been returned to the prompt, idk what happened but you may not have enough memory.")
 print("Please increase your system memory or lower your screen resolution.")
 
 for x = 1, screenWidth do
@@ -54,8 +56,8 @@ local function setScreenChanges(set)
 	end
 end
 
+--not needed anymore
 local function setScreenChange(x,y,layer)
-	--not needed anymore
 	if x > screenWidth or x < 1 or y > screenHeight or y < 1 then
 		return true
 	end
@@ -196,7 +198,7 @@ end
 
 --Draws window
 --isSelected should be true for the topmost or "selected" window in the list
-local function drawWindow(x,y,w,h,title,layer,exclusionMap,isSelected)
+local function drawWindow(x,y,w,h,title,layer,exclusionMap,isSelected,important)
 	--ignoreScreenChange = true
 	fullTitle = " " .. title .. " "
 	if exclusionMap == nil then
@@ -208,7 +210,11 @@ local function drawWindow(x,y,w,h,title,layer,exclusionMap,isSelected)
 	for i=1, w-1 do
 		if i > string.len(fullTitle) then
 			if isSelected then
-				drawChar(x+i,y,"▤",false,layer)
+				if important then
+					drawChar(x+i,y,"▨",false,layer)
+				else 
+					drawChar(x+i,y,"▤",false,layer)
+				end
 				--drawChar(x+i,y,"▒",false,layer)
 			else
 				drawChar(x+i,y,"⣿",false,layer)
@@ -340,13 +346,35 @@ local function drawOutline(x,y,w,h)
 	--ignoreScreenChange = false
 end
 
+--Draws inverted outline (useful for determining moved window location)
+local function drawLineX(x,y,w)
+	--ignoreScreenChange = true
+	--Draw top
+	for i=0, w do
+		if x+i <= screenWidth and x+i >= 1 then
+			if y <= screenHeight and y >= 1 then
+				charAtPos, charFG, charBG = gpu.get(x+i,y)
+				doInvert = true
+				needRepaint = false --getScreenChange(x+i,y)
+				if charFG == 0x000000 then
+					doInvert = false
+				end
+				drawChar(x+i,y,charAtPos,doInvert,-1)
+				if needRepaint then
+					--setScreenChange(x+i,y,-1,true)
+				end
+			end
+		end
+		
+	end
+end
+
 --utility function
 local function flashWindowOutline(layer)
 	drawOutline(windowRects[layer][1],windowRects[layer][2],windowRects[layer][3],windowRects[layer][4])
 	drawOutline(windowRects[layer][1],windowRects[layer][2],windowRects[layer][3],windowRects[layer][4])
 end
 
---needs to be eliminated probably
 local function drawButton(x,y,text,clicked,layer)
 	if clicked then
 		drawString(x,y,text,false,layer)
@@ -355,12 +383,18 @@ local function drawButton(x,y,text,clicked,layer)
 	end
 end
 
---should probably be eliminated as well
-local function windowDialogHardStop(x,y,w,h,title,text,layer,selected)
+--repurposed for internal system use
+--applications should have their own 
+local function windowSystemDialog(x,y,w,h,title,text,layer,selected,doCancel)
+	x = math.floor(x)
+	y = math.floor(y)
+
+	--computer.beep(200)
+	
 	local active = true
 	
 	local exclusionMap = makeExclusionMap(w, h, text)
-	drawWindow(x, y, w, h, title, layer, exclusionMap, selected)
+	drawWindow(x, y, w, h, title, layer, exclusionMap, selected, true)
 	
 	for i = 1, h do
 		if text[i] ~= nil then 
@@ -368,41 +402,44 @@ local function windowDialogHardStop(x,y,w,h,title,text,layer,selected)
 		end
 	end
 	
-	ignoreScreenChange = true
-	drawButton(x + w - 17, y + h - 1, "Cancel", false,layer)
+	if doCancel then
+		drawButton(x + w - 17, y + h - 1, "Cancel", false,layer)
+	end
 	drawButton(x + w - 8, y + h - 1, "  OK  ", false,layer)
-	ignoreScreenChange = false
-		
-	repaint()
-
-	local touchedID = -1
 	
 	while active do 
-		local id, _, touchX, touchY = event.pull("touch")
+		local id, _, touchX, touchY = event.pull()
 		if id == "touch" then
 			if touchX >= x+w-8 and touchX <= x+w-3 then 
 				if touchY >= y+h-1 and touchY <= y+h-1 then
 					drawButton(x + w - 8, y + h - 1, "  OK  ", true, layer)
-					computer.beep(700)
+					--computer.beep(700)
+					os.sleep(0.1)
 					drawButton(x + w - 8, y + h - 1, "  OK  ", false, layer)
+					os.sleep(0.1)
 					active = false
-					touchedID = 0
+					return true
 				end
 			end
-			if touchX >= x+w-17 and touchX <= x+w-12 then 
-				if touchY >= y+h-1 and touchY <= y+h-1 then
-					drawButton(x + w - 17, y + h - 1, "Cancel", true, layer)
-					computer.beep(500)
-					drawButton(x + w - 17, y + h - 1, "Cancel", false, layer)
-					active = false
-					touchedID = 1
+			if doCancel then
+				if touchX >= x+w-17 and touchX <= x+w-12 then 
+					if touchY >= y+h-1 and touchY <= y+h-1 then
+						drawButton(x + w - 17, y + h - 1, "Cancel", true, layer)
+						--computer.beep(500)
+						os.sleep(0.1)
+						drawButton(x + w - 17, y + h - 1, "Cancel", false, layer)
+						os.sleep(0.1)
+						active = false
+						return false
+					end
 				end
 			end
 		end
-		os.sleep(0.1)
+		if id == "key_down" then
+			--return true
+		end
+		--os.sleep(0.1)
 	end
-	
-	return touchedID
 end
 
 local function windowGeneric(x,y,w,h,title,text,layer,selected)
@@ -669,7 +706,15 @@ end
 --flash an outline
 function winAPI.flashOutline(x, y, w, h)
 	drawOutline(x,y,w,h)
+	--os.sleep(0.05)
 	drawOutline(x,y,w,h)
+end
+
+--flash an horizontal line
+function winAPI.flashLineX(x, y, w)
+	drawLineX(x,y,w)
+	--os.sleep(0.05)
+	drawLineX(x,y,w)
 end
 
 --[[
@@ -707,6 +752,24 @@ local function repaint()
 	drawBG(backgroundChar[1], backgroundChar[2])
 end
 
+--returns window's name and id and if it is selected based on click position
+--returns nil for all three if none could be found at the position
+local function getWindowAtPos(x, y)
+	--forward to backward (important)
+	for i = #windowList, 1, -1 do
+		isTopMost = false
+		if i == #windowList then
+			isTopMost = true
+		end
+		if x >= windowList[i].x and x <= windowList[i].x + windowList[i].w then
+			if y >= windowList[i].y and y <= windowList[i].y + windowList[i].h then
+				return windowList[i].name, windowList[i].ID, isTopMost
+			end
+		end
+	end
+	return nil, nil, nil
+end
+
 --scheduler functions
 local processes = {}
 local scheduler = {}
@@ -725,7 +788,8 @@ end
 function scheduler.addProcess(program, filename)
 	foundProcess = scheduler.findProcess(program.details.name)
 	if foundProcess > 0 then
-		error('Scheduler: Process "' .. program.details.name ..'" already exists!')
+		windowSystemDialog(screenWidth/2-20,screenHeight/2-4,39,6,"Error Adding Process",{"The program:",program.details.name,"is already loaded"},-1,true,false)
+		--error('Scheduler: Process "' .. program.details.name ..'" already exists!')
 		return false
 	end
 	processes[#processes+1] = {}
@@ -742,6 +806,22 @@ function scheduler.runProcesses()
 	for i = 1, #processes do
 		if processes[i].program.run ~= nil then
 			processes[i].program.run()
+		end
+	end
+end
+
+--interaction friendly running of processes
+local processCounter = 1
+local ranProcessName = "none"
+function scheduler.runProcessesSlow()
+	if #processes > 0 then
+		ranProcessName = processes[processCounter].program.details.name
+		if processes[processCounter].program.run ~= nil then
+			processes[processCounter].program.run()
+		end
+		processCounter = processCounter + 1
+		if processCounter > #processes then
+			processCounter = 1
 		end
 	end
 end
@@ -763,9 +843,18 @@ function scheduler.removeProcess(processName, forceUnload)
 	return false
 end
 
+local errorStackTrace = nil
+function getStackTrace()
+	errorStackTrace = debug.traceback()
+end
+
 --bsod
-local function errorScreen(err)
-	local crashText = _WINFULLNAME .. " has crashed :["
+local function errorScreen()
+	local f = io.open("syserror.log","w")
+	f:write(errorStackTrace)
+	f:close()
+	
+	local crashText = _WINFULLNAME .. " has encountered a problem"
 	
 	gpu.setForeground(0xFFFFFF)
 	if gpu.getDepth() > 1 then
@@ -776,14 +865,22 @@ local function errorScreen(err)
 	gpu.fill(1, 1, screenWidth, screenHeight, " ")
 	
 	term.setCursor(1,1)
-	term.write(crashText)
-	term.setCursor(1,2)
+	print(crashText)
 	print("")
-	print(err)
+	--if err == "interrupted" then
+	--	print("i was interrupted >:[")
+	--else 
+	--	print(err)
+	--end
+	print("Stack traceback written to syserror.log")
 	print("")
-	print("Processes:")
-	for i = 1, #processes do
-		print(" N[" .. processes[i].program.details.name .. "]",  "F[" .. processes[i].filename .. "]")
+	if #processes > 0 then
+		print("Processes:")
+		for i = 1, #processes do
+			print(" " .. processes[i].program.details.name,  "File: " .. processes[i].filename)
+		end
+	else
+		print("No processes loaded, how did this even happen?")
 	end
 	--while #processes > 0 do
 	--	scheduler.removeProcess(processes[#processes].program.details.name, true)
@@ -794,14 +891,14 @@ local function errorScreen(err)
 	term.setCursor(1,screenHeight-1)
 	print(debug.traceback)
 	term.setCursor(1,screenHeight)
-	term.write("Press SPACE to exit")
+	term.write("Press CTRL + C to exit")
 	
 	pressedSpace = false
-	while not pressedSpace do
-		if keyboard.isKeyDown(0x39) then
-			pressedSpace = true
+	while true do
+		local id, _, x, y = event.pull(1)
+		if id == "interrupted" then
+			break
 		end
-		os.sleep(0.1)
 	end
 	--computer.shutdown(true)
 	gpu.setForeground(0xFFFFFF)
@@ -817,14 +914,21 @@ local function main()
 	repaint()
 end
 
+local appLibHandle = nil
+
+function loadAppLib(filename)
+	appLibHandle = require(filename)
+end
+
 function runWinApp(filename)
-	local file = require(filename)
-	if file ~= nil then
-		scheduler.addProcess(file, filename)
+	if pcall(loadAppLib, filename) then
+		scheduler.addProcess(appLibHandle, filename)
 		--repaint()
 		return true
+	else
+		windowSystemDialog(screenWidth/2-20,screenHeight/2-4,39,6,"Program Loading Error",{"The program","\"" .. filename .. "\"","does not exist or cannot be found."},-1,true,false)
+		return false
 	end
-	return false
 end
 
 local demoDialog1text = {"This is a test message.", "Click OK to do something.", "Cancel works too."}
@@ -876,56 +980,108 @@ function demo2()
 	os.sleep(5)
 end
 
+local dragWait = 0.25
+local lastDragTime = computer.uptime()
+local dragging = false
+local dragOffset = 0
+local dX, dY = 1, 1
+local lX, lY = 1, 1
+
+
 function run()
-	winAPI.addWindow(4,2,40,7,"dragtest",nil,"Generic","test",{"drag me you won't", ":)"})
-	runWinApp("test")
+	--winAPI.addWindow(4,2,12,2,"dragtest",nil,"Generic","test",{"drag me :^)"})
+	--runWinApp("test")
+	--runWinApp("teste")
 	--repaint()
-	local dragWait = 0.5
-	local lastDragTime = computer.uptime()
-	local dragging = false
-	local dX, dY = 0, 0
 	while true do
 		local id, _, x, y = event.pull(0)
-		if not dragging then
-			scheduler.runProcesses()
-		end
 		if id == "interrupted" then
-			print("soft interrupt, closing")
-			break
+			--print("soft interrupt, closing")
+			if windowSystemDialog(screenWidth/2-20,screenHeight/2-3,40,4,"Exit",{"Are you sure you want to exit Windows?"},-1,true,true) then
+				break
+			end
 		elseif id == "touch" or id == "drag" or id == "drop" or id == "scroll" then
-			x = math.floor(x) + 1
-			y = math.floor(y) + 1
-			if id == "drag" then
-				--winAPI.flashOutline(x, y, 40, 7)
-				dragging = true
-				dX = x
-				dY = y
-			end
-			if id == "drop" then
-				dragging = false
-				winAPI.moveWindow(x, y, "dragtest", nil, "Reposition")
-				winAPI.bringToFront("dragtest",nil)
-			end
+			handleClick(id, x, y, 0)
 			--repaint()
 		end
 		if dragging then
 			if lastDragTime + dragWait < computer.uptime() then
 				lastDragTime = computer.uptime()
-				winAPI.flashOutline(dX, dY, 40, 7)
+				--winAPI.flashOutline(dX - dragOffset, dY, windowList[#windowList].w, windowList[#windowList].h)
+				winAPI.flashLineX(dX - dragOffset, dY, windowList[#windowList].w, windowList[#windowList].h)
 			end
 		else 
+			if #processes < 1 then
+				--windowSystemDialog(screenWidth/2-20,screenHeight/2-3,40,5,"No Processes",{"No processes are running.","Windows will exit."},-1,true,false)
+				--break
+			end
+			local status1 = xpcall(scheduler.runProcessesSlow, getStackTrace)
+			if not status1 then
+				local f = io.open("error.log","w")
+				f:write(errorStackTrace)
+				f:close()
+				computer.beep(1000)
+				computer.beep(1000)
+				computer.beep(1000)
+				if windowSystemDialog(screenWidth/2-20,screenHeight/2-5,39,8,"Process Error - System Halted",{"The process", "\"" .. ranProcessName .. "\"", "has encountered an error.", "Stack trace written to error.log.", "Click OK to exit, or Cancel to try to", "continue running."},-1,true,true) then
+					break
+				end
+			end
+			--scheduler.runProcessesSlow()
 			repaint()
 		end
 	end
+	--runWinApp("test")
+end
+
+function handleClick(id, x, y, scrollSpeed)
+	if id == "touch" then
+		local name, id, selected = getWindowAtPos(x, y)
+		if name ~= nil then
+			if not selected then
+				winAPI.bringToFront(name, id)
+			end
+			 
+		else
+			--computer.beep(300)
+		end
+	end
+	if id == "drag" then
+		--winAPI.flashOutline(x, y, 40, 7)
+		if not dragging then
+			if #windowList > 0 then
+				if lX >= windowList[#windowList].x and lX <= windowList[#windowList].x + windowList[#windowList].w then
+					if lY == windowList[#windowList].y then
+						dragging = true
+						dragOffset = lX - windowList[#windowList].x
+						dX = x
+						dY = y
+					end
+				end
+			end
+		else 
+			dX = x
+			dY = y
+		end
+	end
+	if id == "drop" then
+		if dragging then
+			dragging = false
+			winAPI.moveWindow(x - dragOffset, y, windowList[#windowList].name, windowList[#windowList].ID, "Reposition")
+		end
+		--winAPI.bringToFront("dragtest",nil)
+	end
+	lX = x
+	lY = y
 end
 
 --Main code
 drawBG(backgroundChar[1], backgroundChar[2])
 --setScreenChanges(false)
-local status, err = pcall(run)
+local status = xpcall(run, getStackTrace)
 
 if not status then
-	errorScreen(err)
+	errorScreen()
 	--os.sleep(5)
 end
 

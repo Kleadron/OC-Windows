@@ -16,11 +16,11 @@ local screen = component.screen
 local computer = require("computer")
 local screenWidth, screenHeight = gpu.getResolution()
 
+local running = true
+
 local windowList = {}
 --local windowRects = {{5, 3, 40, 7},{2, 1, 40, 7},{6, 7, 40, 7}}
 
---sets characters for screen change
-local screenChanges = {}
 --not exactly a buffer but a change tracker stored in memory seperately from the screen because gpu calls = slow >:(
 local screenBuffer = {}
 
@@ -31,12 +31,7 @@ print(_WINFULLNAME)
 print("If you have been returned to the prompt, idk what happened but you may not have enough memory.")
 print("Please increase your system memory or lower your screen resolution.")
 
-for x = 1, screenWidth do
-	screenChanges[x] = {}
-	for y = 1, screenHeight do
-		--screenChanges[x][y] = true
-	end
-end
+
 
 for x = 1, screenWidth do
 	screenBuffer[x] = {}
@@ -47,51 +42,9 @@ for x = 1, screenWidth do
 	end
 end
 
-local function setScreenChanges(set)
-	--not needed anymore
-	for x = 1, screenWidth do
-		for y = 1, screenHeight do
-			screenChanges[x][y] = set
-		end
-	end
-end
-
---not needed anymore
-local function setScreenChange(x,y,layer)
-	if x > screenWidth or x < 1 or y > screenHeight or y < 1 then
-		return true
-	end
-	if layer + 1 > #windowList then
-		screenChanges[x][y] = true
-		return true
-	end
-	--overrides
-	if layer < 0 then
-		screenChanges[x][y] = true
-		return true
-	end
-	--if we already have an override being that the layer is less than 0, what the fuck is this important for then?
-	--if override then
-	--	screenChanges[x][y] = true
-	--	return true
-	--end
-	for i = layer + 1, #windowList do
-		if x >= windowList[i].x and x <= windowList[i].x + windowList[i].w then
-			if y >= windowList[i].y and y <= windowList[i].y + windowList[i].h then
-				return false
-			end
-		end
-	end
-	screenChanges[x][y] = true
-	return true
-end
-
-local function getScreenChange(x,y)
-	--not needed anymore
-	if x > screenWidth or x < 1 or y > screenHeight or y < 1 then
-		return false
-	end
-	return screenChanges[x][y]
+local errorStackTrace = nil
+function getStackTrace()
+	errorStackTrace = debug.traceback()
 end
 
 --checks all window rectangle layers above the layer given, returns true if the point doesn't intrude on any, false if the point is obstructed
@@ -112,10 +65,6 @@ local function checkLayer(x,y,layer)
 	end
 	return true
 end
-
-checkLayer(1,1,1)
-checkLayer(2,1,1)
-checkLayer(2,9,1)
 
 local ignoreScreenChange = false
 --Draws a character onto the screen safely, checks if there is anything above the layer of the window rect
@@ -184,12 +133,12 @@ local function makeExclusionMap(w,h,content)
 		for j = 1, w-1 do
 			if content[i] ~= nil then
 				if j <= string.len(content[i]) then
-					exclusionMap[i][j] = false;
-				else
 					exclusionMap[i][j] = true;
+				else
+					exclusionMap[i][j] = false;
 				end
 			else
-				exclusionMap[i][j] = true;
+				exclusionMap[i][j] = false;
 			end
 		end
 	end
@@ -226,7 +175,7 @@ local function drawWindow(x,y,w,h,title,layer,exclusionMap,isSelected,important)
 	for i=1, h-1 do
 		drawChar(x,y+i,"⡇",false,layer)
 		for o=1, w-1 do
-			if exclusionMap[i][o] then
+			if not exclusionMap[i][o] then
 				drawChar(x+o,y+i," ",false,layer)
 			end
 		end
@@ -260,7 +209,7 @@ local function drawBox(x,y,w,h,layer,exclusionMap)
 	for i=1, h-1 do
 		drawChar(x,y+i,"⡇",false,layer)
 		for o=1, w-1 do
-			if exclusionMap[i][o] then
+			if not exclusionMap[i][o] then
 				drawChar(x+o,y+i," ",false,layer)
 			end
 		end
@@ -283,14 +232,10 @@ local function drawOutline(x,y,w,h)
 			if y <= screenHeight and y >= 1 then
 				charAtPos, charFG, charBG = gpu.get(x+i,y)
 				doInvert = true
-				needRepaint = false --getScreenChange(x+i,y)
 				if charFG == 0x000000 then
 					doInvert = false
 				end
 				drawChar(x+i,y,charAtPos,doInvert,-1)
-				if needRepaint then
-					--setScreenChange(x+i,y,-1,true)
-				end
 			end
 		end
 		
@@ -301,28 +246,20 @@ local function drawOutline(x,y,w,h)
 			if y+i <= screenHeight and y+i >= 1 then
 				charAtPos, charFG, charBG = gpu.get(x,y+i)
 				doInvert = true
-				needRepaint = false --getScreenChange(x,y+i)
 				if charFG == 0x000000 then
 					doInvert = false
 				end
 				drawChar(x,y+i,charAtPos,doInvert,-1)
-				if needRepaint then
-					--setScreenChange(x,y+i,-1,true)
-				end
 			end
 		end
 		if x+w <= screenWidth and x+w >= 1 then
 			if y+i <= screenHeight and y+i >= 1 then
 				charAtPos, charFG, charBG = gpu.get(x+w,y+i)
 				doInvert = true
-				needRepaint = false --getScreenChange(x+w,y+i)
 				if charFG == 0x000000 then
 					doInvert = false
 				end
 				drawChar(x+w,y+i,charAtPos,doInvert,-1)
-				if needRepaint then
-					--setScreenChange(x+w,y+i,-1,true)
-				end
 			end
 		end
 	end
@@ -332,14 +269,10 @@ local function drawOutline(x,y,w,h)
 			if y+h <= screenHeight and y+h >= 1 then
 				charAtPos, charFG, charBG = gpu.get(x+i,y+h)
 				doInvert = true
-				needRepaint = false --getScreenChange(x+i,y+h)
 				if charFG == 0x000000 then
 					doInvert = false
 				end
 				drawChar(x+i,y+h,charAtPos,doInvert,-1)
-				if needRepaint then
-					--setScreenChange(x+i,y+h,-1,true)
-				end
 			end
 		end
 	end
@@ -355,24 +288,14 @@ local function drawLineX(x,y,w)
 			if y <= screenHeight and y >= 1 then
 				charAtPos, charFG, charBG = gpu.get(x+i,y)
 				doInvert = true
-				needRepaint = false --getScreenChange(x+i,y)
 				if charFG == 0x000000 then
 					doInvert = false
 				end
 				drawChar(x+i,y,charAtPos,doInvert,-1)
-				if needRepaint then
-					--setScreenChange(x+i,y,-1,true)
-				end
 			end
 		end
 		
 	end
-end
-
---utility function
-local function flashWindowOutline(layer)
-	drawOutline(windowRects[layer][1],windowRects[layer][2],windowRects[layer][3],windowRects[layer][4])
-	drawOutline(windowRects[layer][1],windowRects[layer][2],windowRects[layer][3],windowRects[layer][4])
 end
 
 local function drawButton(x,y,text,clicked,layer)
@@ -461,15 +384,6 @@ end
 
 --windowDialog(window1x,window1y,window1w, window1h,"Lol title", "Lol text")
 
---utility function to mark an area of the screen to be repainted
-local function markRectRepaint(rect)
-	for x = windowRects[rect][1], windowRects[rect][1] + windowRects[rect][3] do
-		for y = windowRects[rect][2], windowRects[rect][2] + windowRects[rect][4] do
-			--setScreenChange(x, y, rect, true)
-		end
-	end
-end
-
 --window API
 winAPI = {}
 
@@ -489,23 +403,6 @@ function winAPI.findWindow(name, ID)
 	return -1
 end
 
---marks a window area for repainting, internal use only
-function winAPI.markRepaint(name, ID)
-	if ID == nil then
-		ID = 0
-	end
-	foundWindow = winAPI.findWindow(name, ID)
-	if foundWindow > 0 then
-		for x = windowList[foundWindow].x, windowList[foundWindow].x + windowList[foundWindow].w do
-			for y = windowList[foundWindow].y, windowList[foundWindow].y + windowList[foundWindow].h do
-				--setScreenChange(x, y, foundWindow, true)
-			end
-		end
-		return true
-	end
-	return false
-end
-
 --Shift a window to the front by name and ID
 function winAPI.bringToFront(name, ID)
 	if ID == nil then
@@ -517,12 +414,10 @@ function winAPI.bringToFront(name, ID)
 		return true --window is already the topmost
 	end
 	if foundWindow > 0 then
-		winAPI.markRepaint(name, ID)
 		windowCache = windowList[foundWindow] --store the found window in a cache for later
 		--shift all windows after the found window downward
 		for i = foundWindow, #windowList-1 do
 			windowList[i] = windowList[i+1]
-			winAPI.markRepaint(windowList[i].name, windowList[i].ID)
 		end
 		windowList[#windowList] = windowCache --set the topmost window as the cached(found) window
 		return true --the operation completed succesfully
@@ -533,9 +428,6 @@ end
 --Add a window to the window list
 --window layer is the position in the table
 function winAPI.addWindow(x, y, w, h, name, ID, windowType, title, content)
-	if #windowList > 0 then
-		winAPI.markRepaint(windowList[#windowList].name, windowList[#windowList].ID)
-	end
 	currentLayer = #windowList+1
 	windowList[currentLayer] = {} --add a new window spot
 	
@@ -568,7 +460,7 @@ function winAPI.addWindow(x, y, w, h, name, ID, windowType, title, content)
 		windowList[currentLayer].content = content
 	end
 	
-	winAPI.markRepaint(name, ID)
+	--winAPI.markRepaint(name, ID)
 	
 	return true --no problems, window added?
 end
@@ -615,7 +507,6 @@ function winAPI.updateWindow(name, ID, title, content)
 		--if not content == nil then
 			windowList[foundWindow].content = content
 		--end
-		winAPI.markRepaint(name, ID)
 		return true --window found - updated
 	end
 	return false --window not found - could not update
@@ -628,11 +519,7 @@ function winAPI.removeWindow(name, ID)
 	end
 	foundWindow = winAPI.findWindow(name, ID)
 	if foundWindow > 0 then
-		winAPI.markRepaint(name, ID)
 		table.remove(windowList, foundWindow)
-		if #windowList > 0 then
-			winAPI.markRepaint(windowList[#windowList].name, windowList[#windowList].ID)
-		end
 		return true --the window was succesfully deleted
 	end
 	return false --the window could not be found, not deleted
@@ -646,17 +533,13 @@ function winAPI.moveWindow(x, y, name, ID, moveType)
 	foundWindow = winAPI.findWindow(name, ID)
 	if foundWindow > 0 then
 		if moveType == "Translate" then
-			winAPI.markRepaint(name, ID)
 			windowList[foundWindow].x = windowList[foundWindow].x + x
 			windowList[foundWindow].y = windowList[foundWindow].y + y
-			winAPI.markRepaint(name, ID)
 			return true
 		end
 		if moveType == "Reposition" then
-			winAPI.markRepaint(name, ID)
 			windowList[foundWindow].x = x
 			windowList[foundWindow].y = y
-			winAPI.markRepaint(name, ID)
 			return true
 		end
 		return false --invalid moveType
@@ -730,29 +613,102 @@ function winAPI.generalTemplate(name, ID)
 end
 --]]
 
+--also usable for layer
+local windowContextPosition = 0
+local windowContextExclusionMap = nil
+local windowContextClickX = 0
+local windowContextClickY = 0
+local windowContextID = 0
+local windowContextName = ""
+
+function winAPI.text(x, y, text, inverted)
+	wX = windowList[windowContextPosition].x + x
+	wY = windowList[windowContextPosition].y + y
+	drawString(wX, wY, text, inverted, windowContextPosition)
+	for i = 0, text:len()-1 do
+		windowContextExclusionMap[y][x+i] = true
+	end
+end
+
+function winAPI.button(x, y, text)
+	wX = windowList[windowContextPosition].x + x
+	wY = windowList[windowContextPosition].y + y
+	if windowContextClickX >= wX and windowContextClickX <= wX+text:len()-1 then 
+		if windowContextClickY == wY then
+			winAPI.text(x, y, text, false)
+			os.sleep(0.05)
+			return true
+		end
+	end
+	winAPI.text(x, y, text, true)
+	return false
+end
+
 --end window utilities
+
+local processes = {}
+
+local function repaintWindow(position, clickX, clickY)
+	windowContextPosition = position
+	windowContextExclusionMap = makeExclusionMap(windowList[position].w, windowList[position].h, {""})
+	windowContextClickX = clickX
+	windowContextClickY = clickY
+	windowContextID = windowList[position].ID
+	windowContextName = windowList[position].name
+	local appName = windowList[position].name
+	if #processes < 1 then
+		return
+	end
+	for i = 1, #processes do
+		if processes[i].program.details.name == appName then
+			if processes[i].program.repaint ~= nil then
+				local selected = false
+				if position == #windowList then
+					selected = true
+				end
+				local status2 = xpcall(processes[i].program.repaint, getStackTrace, windowList[position].ID)
+				if not status2 then
+					local f = io.open("repainterr.log","w")
+					f:write(errorStackTrace)
+					f:close()
+					computer.beep(1000)
+					computer.beep(1000)
+					computer.beep(1000)
+					if windowSystemDialog(screenWidth/2-20,screenHeight/2-5,39,8,"Repaint Error - System Halted",{"The window", "\"" .. windowContextName .. "\" " .. windowContextID , "errored during repaint.", "Stack trace written to repainterr.log.", "Click OK to exit, or Cancel to try to", "continue running."},-1,true,true) then
+						running = false
+					end
+				end
+				if windowList[position].windowType == "Generic" then
+					drawWindow(windowList[position].x, windowList[position].y, windowList[position].w, windowList[position].h, windowList[position].title, position, windowContextExclusionMap, selected)
+				end
+				--processes[i].program.repaint(windowList[position].ID)
+			end
+		end
+	end
+end
 
 local function repaint()
 	--repainting from forward to backward
-	for i = #windowList, 1, -1 do
+	for j = #windowList, 1, -1 do
 	--repainting from backward to forward
 	--for i = 1, #windowList do
 		--computer.beep(300, 0)
-		isTopMost = false
-		if i == #windowList then
-			isTopMost = true
-		end
-		if windowList[i].windowType == "Dialog" then
-			windowDialog(windowList[i].x, windowList[i].y, windowList[i].w, windowList[i].h, windowList[i].title, windowList[i].content, i, isTopMost)
-		end
-		if windowList[i].windowType == "Generic" then
-			windowGeneric(windowList[i].x, windowList[i].y, windowList[i].w, windowList[i].h, windowList[i].title, windowList[i].content, i, isTopMost)
-		end
+		--isTopMost = false
+		--if i == #windowList then
+		--	isTopMost = true
+		--end
+		--if windowList[i].windowType == "Dialog" then
+		--	windowDialog(windowList[i].x, windowList[i].y, windowList[i].w, windowList[i].h, windowList[i].title, windowList[i].content, i, isTopMost)
+		--end
+		--if windowList[i].windowType == "Generic" then
+		--	windowGeneric(windowList[i].x, windowList[i].y, windowList[i].w, windowList[i].h, windowList[i].title, windowList[i].content, i, isTopMost)
+		--end
+		repaintWindow(j, 0, 0)
 	end
 	drawBG(backgroundChar[1], backgroundChar[2])
 end
 
---returns window's name and id and if it is selected based on click position
+--returns window's position in the window list based on position
 --returns nil for all three if none could be found at the position
 local function getWindowAtPos(x, y)
 	--forward to backward (important)
@@ -763,15 +719,15 @@ local function getWindowAtPos(x, y)
 		end
 		if x >= windowList[i].x and x <= windowList[i].x + windowList[i].w then
 			if y >= windowList[i].y and y <= windowList[i].y + windowList[i].h then
-				return windowList[i].name, windowList[i].ID, isTopMost
+				return i
 			end
 		end
 	end
-	return nil, nil, nil
+	return nil
 end
 
 --scheduler functions
-local processes = {}
+
 local scheduler = {}
 
 --find process location in oprocess list
@@ -841,11 +797,6 @@ function scheduler.removeProcess(processName, forceUnload)
 		return true
 	end
 	return false
-end
-
-local errorStackTrace = nil
-function getStackTrace()
-	errorStackTrace = debug.traceback()
 end
 
 --bsod
@@ -931,69 +882,19 @@ function runWinApp(filename)
 	end
 end
 
-local demoDialog1text = {"This is a test message.", "Click OK to do something.", "Cancel works too."}
-local demoDialog2text = {"You won't see the text under this line.", "Click OK to go boom boom.", "  konata best"}
-local demoDialog3text = {"This is testing bringToFront", "Click OK to do nothing.", "Cancel never worked."}
-
-function demo()
-	winAPI.addWindow(6,7,40,7,"dialog1",nil,"Generic","Warning",demoDialog1text)
-	winAPI.addWindow(2,1,40,7,"dialog2",nil,"Generic","Warning",demoDialog2text)
-	winAPI.addWindow(5,3,40,7,"dialog3",nil,"Generic","Warning",demoDialog3text)
-	repaint()
-	os.sleep(1)
-	
-	runWinApp("test")
-	runWinApp("test2")
-	for i = 1, 5 do
-		main()
-	end
-	--error("poo")
-	scheduler.removeProcess("Iterator", false)
-	scheduler.removeProcess("Iterator 2", false)
-	repaint()
-	os.sleep(1)
-	
-	winAPI.bringToFront("dialog1",nil)
-	repaint()
-	os.sleep(1)
-	
-	for i = 0, 5 do
-		winAPI.flashOutline(6,7+i,40,7)
-	end
-	for i = 0, 5 do
-		winAPI.flashOutline(6+i,12,40,7)
-	end
-	
-	winAPI.moveWindow(5,5,"dialog1",nil,"Translate")
-	repaint()
-	--os.sleep(1)
-	--winAPI.addWindow(screenWidth/2 - 15,screenHeight/2 - 2,30,4,"crashmsg",nil,"Generic","Uh oh",{"Windows will now...","CRASH :D"})
-	--repaint()
-	--os.sleep(0.5)
-	--error("Test crash :D")
-end
-
-function demo2()
-	winAPI.addWindow(4,2,40,7,"dialog1",nil,"Dialog","Dialog",{"This is a dialog box","This is also an example"})
-	winAPI.addWindow(49,6,30,4,"generic1",nil,"Generic","Generic",{"This is a generic window","This is also an example, too"})
-	repaint()
-	os.sleep(5)
-end
-
-local dragWait = 0.25
+local dragFlashWait = 0.25
 local lastDragTime = computer.uptime()
 local dragging = false
 local dragOffset = 0
 local dX, dY = 1, 1
 local lX, lY = 1, 1
 
-
 function run()
 	--winAPI.addWindow(4,2,12,2,"dragtest",nil,"Generic","test",{"drag me :^)"})
-	--runWinApp("test")
+	runWinApp("test")
 	--runWinApp("teste")
 	--repaint()
-	while true do
+	while running do
 		local id, _, x, y = event.pull(0)
 		if id == "interrupted" then
 			--print("soft interrupt, closing")
@@ -1004,8 +905,20 @@ function run()
 			handleClick(id, x, y, 0)
 			--repaint()
 		end
+		local status1 = xpcall(scheduler.runProcessesSlow, getStackTrace)
+		if not status1 then
+			local f = io.open("error.log","w")
+			f:write(errorStackTrace)
+			f:close()
+			computer.beep(1000)
+			computer.beep(1000)
+			computer.beep(1000)
+			if windowSystemDialog(screenWidth/2-20,screenHeight/2-5,39,8,"Process Error - System Halted",{"The process", "\"" .. ranProcessName .. "\"", "has encountered an error.", "Stack trace written to error.log.", "Click OK to exit, or Cancel to try to", "continue running."},-1,true,true) then
+				break
+			end
+		end
 		if dragging then
-			if lastDragTime + dragWait < computer.uptime() then
+			if lastDragTime + dragFlashWait < computer.uptime() then
 				lastDragTime = computer.uptime()
 				--winAPI.flashOutline(dX - dragOffset, dY, windowList[#windowList].w, windowList[#windowList].h)
 				winAPI.flashLineX(dX - dragOffset, dY, windowList[#windowList].w, windowList[#windowList].h)
@@ -1015,20 +928,10 @@ function run()
 				--windowSystemDialog(screenWidth/2-20,screenHeight/2-3,40,5,"No Processes",{"No processes are running.","Windows will exit."},-1,true,false)
 				--break
 			end
-			local status1 = xpcall(scheduler.runProcessesSlow, getStackTrace)
-			if not status1 then
-				local f = io.open("error.log","w")
-				f:write(errorStackTrace)
-				f:close()
-				computer.beep(1000)
-				computer.beep(1000)
-				computer.beep(1000)
-				if windowSystemDialog(screenWidth/2-20,screenHeight/2-5,39,8,"Process Error - System Halted",{"The process", "\"" .. ranProcessName .. "\"", "has encountered an error.", "Stack trace written to error.log.", "Click OK to exit, or Cancel to try to", "continue running."},-1,true,true) then
-					break
-				end
-			end
 			--scheduler.runProcessesSlow()
-			repaint()
+			if running then
+				repaint()
+			end
 		end
 	end
 	--runWinApp("test")
@@ -1036,12 +939,15 @@ end
 
 function handleClick(id, x, y, scrollSpeed)
 	if id == "touch" then
-		local name, id, selected = getWindowAtPos(x, y)
-		if name ~= nil then
+		local position = getWindowAtPos(x, y)
+		if position ~= nil then
 			if not selected then
-				winAPI.bringToFront(name, id)
+				winAPI.bringToFront(windowList[position].name, windowList[position].ID)
 			end
-			 
+			repaintWindow(position, x, y)
+			if running then
+				repaintWindow(position, 0, 0)
+			end
 		else
 			--computer.beep(300)
 		end
@@ -1078,6 +984,7 @@ end
 --Main code
 drawBG(backgroundChar[1], backgroundChar[2])
 --setScreenChanges(false)
+--run()
 local status = xpcall(run, getStackTrace)
 
 if not status then
@@ -1085,4 +992,9 @@ if not status then
 	--os.sleep(5)
 end
 
+for i = 1, #processes do
+	scheduler.removeProcess(processes[i].program.details.name, false)
+end
+
 term.setCursor(1,1)
+

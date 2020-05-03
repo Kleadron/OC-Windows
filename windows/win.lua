@@ -3,9 +3,9 @@
 backgroundChar = {"▒", false}
 
 --NO TOUCHY BEYOND THIS POINT
-_WINNAME = "Windows"
-_WINVER = "0.0.0.2"
-_WINFULLNAME = _WINNAME .. " " .. _WINVER
+_WINMANNAME = "WinMan"
+_WINMANVERS = "0.1.0.0"
+_WINMANVERSSTR = _WINNAME .. " " .. _WINVER
 local term = require("term")
 local os = require("os")
 local event = require("event")
@@ -25,13 +25,11 @@ local windowList = {}
 local screenBuffer = {}
 
 --gpu.fill(1, 1, screenWidth, screenHeight, " ")
---gpu.set(1, 1, _WINFULLNAME)
+--gpu.set(1, 1, _WINMANVERSSTR)
 term.clear()
-print(_WINFULLNAME)
+print(_WINMANVERSSTR)
 print("If you have been returned to the prompt, idk what happened but you may not have enough memory.")
 print("Please increase your system memory or lower your screen resolution.")
-
-
 
 for x = 1, screenWidth do
 	screenBuffer[x] = {}
@@ -805,7 +803,7 @@ local function errorScreen()
 	f:write(errorStackTrace)
 	f:close()
 	
-	local crashText = _WINFULLNAME .. " has encountered a problem"
+	local crashText = _WINMANVERSSTR .. " encountered an internal system error :["
 	
 	gpu.setForeground(0xFFFFFF)
 	if gpu.getDepth() > 1 then
@@ -831,7 +829,7 @@ local function errorScreen()
 			print(" " .. processes[i].program.details.name,  "File: " .. processes[i].filename)
 		end
 	else
-		print("No processes loaded, how did this even happen?")
+		print("No processes loaded, how did this even happen? :| window man is confused")
 	end
 	--while #processes > 0 do
 	--	scheduler.removeProcess(processes[#processes].program.details.name, true)
@@ -858,13 +856,6 @@ local function errorScreen()
 	--term.setCursor(1,1)
 end
 
-
---THE MAIN FUNCTION :D
-local function main()
-	scheduler.runProcesses()
-	repaint()
-end
-
 local appLibHandle = nil
 
 function loadAppLib(filename)
@@ -889,7 +880,7 @@ local dragOffset = 0
 local dX, dY = 1, 1
 local lX, lY = 1, 1
 
-function run()
+local function run()
 	--winAPI.addWindow(4,2,12,2,"dragtest",nil,"Generic","test",{"drag me :^)"})
 	runWinApp("test")
 	--runWinApp("teste")
@@ -898,7 +889,7 @@ function run()
 		local id, _, x, y = event.pull(0)
 		if id == "interrupted" then
 			--print("soft interrupt, closing")
-			if windowSystemDialog(screenWidth/2-20,screenHeight/2-3,40,4,"Exit",{"Are you sure you want to exit Windows?"},-1,true,true) then
+			if windowSystemDialog(screenWidth/2-20,screenHeight/2-3,40,4,"Exit",{"Are you sure you want to exit " .. _WINMANNAME .. "?"},-1,true,true) then
 				break
 			end
 		elseif id == "touch" or id == "drag" or id == "drop" or id == "scroll" then

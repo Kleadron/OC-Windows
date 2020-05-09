@@ -1,0 +1,15 @@
+too long without yielding
+stack traceback:
+	/home/windows/win.lua:46: in function </home/windows/win.lua:45>
+	[C]: in function 'pcall'
+	machine:809: in global 'xpcall'
+	/home/windows/win.lua:666: in upvalue 'repaintWindow'
+	/home/windows/win.lua:931: in global 'handleClick'
+	/home/windows/win.lua:887: in function </home/windows/win.lua:874>
+	[C]: in function 'xpcall'
+	machine:798: in global 'xpcall'
+	/home/windows/win.lua:972: in main chunk
+	(...tail calls...)
+	[C]: in function 'xpcall'
+	machine:798: in global 'xpcall'
+	/lib/process.lua:63: in function </lib/process.lua:59>

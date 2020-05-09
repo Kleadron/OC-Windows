@@ -1,4 +1,4 @@
-if not _WINVER then
+if not _WINMANVERS then
 	print("This program requires Windows.")
 	return
 end
@@ -73,6 +73,9 @@ handles.repaint = function(id, iInfo)
 			--testButtonPressed()
 			iterator = iterator + 1
 			computer.beep(300, 0)
+			while true do
+				
+			end
 			--computer.beep(300, 0)
 		end
 	end

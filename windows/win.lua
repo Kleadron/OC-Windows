@@ -5,7 +5,7 @@ backgroundChar = {"▒", false}
 --NO TOUCHY BEYOND THIS POINT
 _WINMANNAME = "WinMan"
 _WINMANVERS = "0.1.0.0"
-_WINMANVERSSTR = _WINNAME .. " " .. _WINVER
+_WINMANVERSSTR = _WINMANNAME .. " " .. _WINMANVERS
 local term = require("term")
 local os = require("os")
 local event = require("event")
@@ -41,8 +41,10 @@ for x = 1, screenWidth do
 end
 
 local errorStackTrace = nil
-function getStackTrace()
+local errorReason = nil
+function fetchErrorInfo(err)
 	errorStackTrace = debug.traceback()
+	errorReason = err
 end
 
 --checks all window rectangle layers above the layer given, returns true if the point doesn't intrude on any, false if the point is obstructed
@@ -616,8 +618,6 @@ local windowContextPosition = 0
 local windowContextExclusionMap = nil
 local windowContextClickX = 0
 local windowContextClickY = 0
-local windowContextID = 0
-local windowContextName = ""
 
 function winAPI.text(x, y, text, inverted)
 	wX = windowList[windowContextPosition].x + x
@@ -651,8 +651,6 @@ local function repaintWindow(position, clickX, clickY)
 	windowContextExclusionMap = makeExclusionMap(windowList[position].w, windowList[position].h, {""})
 	windowContextClickX = clickX
 	windowContextClickY = clickY
-	windowContextID = windowList[position].ID
-	windowContextName = windowList[position].name
 	local appName = windowList[position].name
 	if #processes < 1 then
 		return
@@ -664,22 +662,24 @@ local function repaintWindow(position, clickX, clickY)
 				if position == #windowList then
 					selected = true
 				end
-				local status2 = xpcall(processes[i].program.repaint, getStackTrace, windowList[position].ID)
+				--processes[i].program.repaint(windowList[position].ID)
+				local status2 = xpcall(processes[i].program.repaint, fetchErrorInfo, windowList[position].ID)
 				if not status2 then
-					local f = io.open("repainterr.log","w")
+					local f = io.open("winderr.log","w")
+					f:write(errorReason)
+					f:write("\n")
 					f:write(errorStackTrace)
 					f:close()
 					computer.beep(1000)
 					computer.beep(1000)
 					computer.beep(1000)
-					if windowSystemDialog(screenWidth/2-20,screenHeight/2-5,39,8,"Repaint Error - System Halted",{"The window", "\"" .. windowContextName .. "\" " .. windowContextID , "errored during repaint.", "Stack trace written to repainterr.log.", "Click OK to exit, or Cancel to try to", "continue running."},-1,true,true) then
+					if windowSystemDialog(screenWidth/2-20,screenHeight/2-5,39,8,"Repaint Error - System Halted",{"Window with ID", windowList[windowContextPosition].name .. " " .. windowList[windowContextPosition].ID, "failed during repaint.", "Stack trace written to winderr.log.", "Click OK to exit, or Cancel to try to", "continue running."},-1,true,true) then
 						running = false
 					end
 				end
 				if windowList[position].windowType == "Generic" then
 					drawWindow(windowList[position].x, windowList[position].y, windowList[position].w, windowList[position].h, windowList[position].title, position, windowContextExclusionMap, selected)
 				end
-				--processes[i].program.repaint(windowList[position].ID)
 			end
 		end
 	end
@@ -690,17 +690,6 @@ local function repaint()
 	for j = #windowList, 1, -1 do
 	--repainting from backward to forward
 	--for i = 1, #windowList do
-		--computer.beep(300, 0)
-		--isTopMost = false
-		--if i == #windowList then
-		--	isTopMost = true
-		--end
-		--if windowList[i].windowType == "Dialog" then
-		--	windowDialog(windowList[i].x, windowList[i].y, windowList[i].w, windowList[i].h, windowList[i].title, windowList[i].content, i, isTopMost)
-		--end
-		--if windowList[i].windowType == "Generic" then
-		--	windowGeneric(windowList[i].x, windowList[i].y, windowList[i].w, windowList[i].h, windowList[i].title, windowList[i].content, i, isTopMost)
-		--end
 		repaintWindow(j, 0, 0)
 	end
 	drawBG(backgroundChar[1], backgroundChar[2])
@@ -799,11 +788,13 @@ end
 
 --bsod
 local function errorScreen()
-	local f = io.open("syserror.log","w")
+	local f = io.open("syserr.log","w")
+	f:write(errorReason)
+	f:write("\n")
 	f:write(errorStackTrace)
 	f:close()
 	
-	local crashText = _WINMANVERSSTR .. " encountered an internal system error :["
+	local crashText = _WINMANVERSSTR .. " encountered an critical system error"
 	
 	gpu.setForeground(0xFFFFFF)
 	if gpu.getDepth() > 1 then
@@ -816,12 +807,12 @@ local function errorScreen()
 	term.setCursor(1,1)
 	print(crashText)
 	print("")
-	--if err == "interrupted" then
-	--	print("i was interrupted >:[")
-	--else 
-	--	print(err)
-	--end
-	print("Stack traceback written to syserror.log")
+	if errorReason == "interrupted" then
+		print("i was interrupted >:[")
+	else 
+		print(errorReason)
+	end
+	print("Stack traceback written to syserr.log")
 	print("")
 	if #processes > 0 then
 		print("Processes:")
@@ -896,18 +887,6 @@ local function run()
 			handleClick(id, x, y, 0)
 			--repaint()
 		end
-		local status1 = xpcall(scheduler.runProcessesSlow, getStackTrace)
-		if not status1 then
-			local f = io.open("error.log","w")
-			f:write(errorStackTrace)
-			f:close()
-			computer.beep(1000)
-			computer.beep(1000)
-			computer.beep(1000)
-			if windowSystemDialog(screenWidth/2-20,screenHeight/2-5,39,8,"Process Error - System Halted",{"The process", "\"" .. ranProcessName .. "\"", "has encountered an error.", "Stack trace written to error.log.", "Click OK to exit, or Cancel to try to", "continue running."},-1,true,true) then
-				break
-			end
-		end
 		if dragging then
 			if lastDragTime + dragFlashWait < computer.uptime() then
 				lastDragTime = computer.uptime()
@@ -921,6 +900,20 @@ local function run()
 			end
 			--scheduler.runProcessesSlow()
 			if running then
+				local status1 = xpcall(scheduler.runProcessesSlow, fetchErrorInfo)
+				if not status1 then
+					local f = io.open("err.log","w")
+					f:write(errorReason)
+					f:write("\n")
+					f:write(errorStackTrace)
+					f:close()
+					computer.beep(1000)
+					computer.beep(1000)
+					computer.beep(1000)
+					if windowSystemDialog(screenWidth/2-20,screenHeight/2-5,39,8,"Process Error - System Halted",{"The process", "\"" .. ranProcessName .. "\"", "has encountered an error.", "Stack trace written to err.log.", "Click OK to exit, or Cancel to try to", "continue running."},-1,true,true) then
+						break
+					end
+				end
 				repaint()
 			end
 		end
@@ -976,7 +969,7 @@ end
 drawBG(backgroundChar[1], backgroundChar[2])
 --setScreenChanges(false)
 --run()
-local status = xpcall(run, getStackTrace)
+local status = xpcall(run, fetchErrorInfo)
 
 if not status then
 	errorScreen()
